@@ -1,0 +1,609 @@
+# math registers, used to perform math
+:alias math_1 v8
+:alias math_2 v9
+:alias math_3 vA
+:alias math_4 vB
+:alias math_5 vC
+:alias math_6 vD
+
+:alias addr_hi v6
+:alias addr_lo v7
+
+
+
+:alias sign_a math_1
+:alias sign_b math_2
+:alias value_a math_3
+:alias value_b math_4
+
+
+
+# if i clear the screen, no need to redraw anything?
+# v0 - v6
+# can use a register as a shift-back flag?
+# if an x coordinate of a ground obstacle is 0:
+#  don't increment the addr register pair.
+
+
+: set_i_from_addr
+	i := set_i_from_addr_location
+	
+	save addr_hi - addr_lo
+	: set_i_from_addr_command
+		0xF0 0x00
+	: set_i_from_addr_location
+		0x00 0x00
+
+return
+:monitor addr_hi 2 
+:monitor set_i_from_addr_location "0x%2x"
+
+:macro SET_ADDR location {
+	:calc location_hi { location >> 8 }
+	:calc location_lo { location & 0xFF }
+	addr_hi := location_hi
+	addr_lo := location_lo
+}
+
+# A simple signed arithmetic
+:const NEG_BIT  0b10000000
+:const VAL_MASK 0b01111111
+
+# helper to automate compile-time bound checking on variables
+:macro ASSERT_IS_INT8 msg num {
+	:assert msg { ( -127 <= num ) & ( num <= 127 ) } 
+}
+
+:macro EXTRACT_SIGN_B b {
+	sign_b := NEG_BIT
+	sign_b &= b
+}
+
+:macro SPLIT_INT8_CONST C {
+	:calc SIGN_C  { ( C < 0 ) << 8 }
+	:calc VALUE_C {   C & VAL_MASK }
+}
+
+:macro LD_INT8 REG NUM {
+	ASSERT_IS_INT8 "Signed 8-bit constants loaded to a register must be between -127 and 127" NUM
+	
+	SPLIT_INT8_CONST NUM
+	
+	REG := VALUE_C
+	sign_b := SIGN_C
+	REG |= sign_b
+}
+
+:macro EXTRACT_SIGN_A a {
+	sign_a := NEG_BIT
+	sign_a &= a
+}
+
+:macro EXTRACT_VALUE_A a {
+	value_a := VAL_MASK
+	value_a &= a
+}
+
+:macro EXTRACT_VALUE_B b {
+	value_b := VAL_MASK
+	value_b &= b
+}
+
+:macro LOAD_INT8_CONST b {
+	
+	EXTRACT_SIGN_B  b
+	EXTRACT_VALUE_B b
+}
+
+:macro ADD_S8_TEMPLATE a { 
+	# software implementation of signed 8-bit addition.
+	# prioritizes legibility over speed.
+	
+	# Requires A and B to be set beforehand, so it can
+	# be re-used to define constant-based addition and
+	# addition of registers to each other.
+	
+	# cases:
+	# both positive
+	# both negative
+	# one neg, one positive
+	if sign_a == sign_b begin
+		# same sign, easy
+		a := value_a
+		a += value_b
+		a |= sign_a
+	else
+		if value_a == value_b begin
+			a := 0
+		else
+			if sign_b > sign_a begin # b is negative while a is positive
+				if value_a > value_b begin
+					a := value_a
+					a -= value_b
+				else # b > a
+					a := value_b
+					a -= value_a
+					# equivalent to OR with NEG_BIT w/o requiring setting another register
+					a |= sign_b 
+				end
+			else # a negative, b positive 
+				if value_a > value_b begin
+					a := value_a
+					a -= value_b
+					# equivalent to OR with NEG_BIT w/o requiring setting another register
+					a |= sign_a
+				else # b > a
+					a := value_b
+					a -= value_a
+				end
+			end
+		end
+	end
+}
+
+# this should work for both constants and non-constants?
+:macro ADD_INT8_INT8 a b {
+	EXTRACT_SIGN_A a
+	EXTRACT_VALUE_A a
+	
+	EXTRACT_SIGN_B b
+	EXTRACT_VALUE_B b
+
+	ADD_S8_TEMPLATE a
+}
+
+:macro ADD_INT8_CONST a const {
+	EXTRACT_SIGN_A a
+	EXTRACT_VALUE a
+	LD_INT8 const
+	ADD_S8_TEMPLATE
+}
+
+:macro MIN_S8_C C reg {
+	ASSERT_IS_INT8 "C must be between -127 and 127 inclusive" C
+	
+	EXTRACT_VALUE_A reg
+ 	EXTRACT_SIGN_A  reg
+	
+	SPLIT_INT8_CONST C
+	
+	if sign_a == SIGN_C begin
+		if sign_a == 0 begin
+			# choose lower of two #s gt 0
+			if value_a > VALUE_C then reg := C
+		else
+			# choose more negative number
+			if value_a < VALUE_C then reg := C
+		end
+	else # not same sign
+		if sign_a > SIGN_C then reg := C
+	end
+}
+
+:macro MAX_S8_C C reg {
+	ASSERT_SIGNED_8 "C must be between -127 and 127 inclusive" C
+		
+	EXTRACT_VALUE_A reg
+	EXTRACT_SIGN_A  reg
+		
+	SPLIT_INT8_CONST
+
+	if sign_a == SIGN_C begin
+		if sign_a == 0 begin # + numbers
+			if value_a < VALUE_C then reg := C
+		else # - #s
+			if value_a > VALUE_C then reg := C
+		end
+	else # not same sign
+		if sign_a < SIGN_C then reg := C
+	end
+		
+}
+
+:macro CLAMP_S8_C MIN MAX reg {
+	# clamp a value to be between a range of constants
+	ASSERT_SIGNED_8 "MIN must be between -127 and 127 inclusive" MIN
+	ASSERT_SIGNED_8 "MAX must bet between -127 and 127 inclusive" MAX
+	MIN_S8_C MAX reg
+	MAX_S8_C MIN reg
+	
+}
+
+
+:const ANIM_DELAY_FACTOR  2  # how many game update ticks a given bird animation frame for.
+:alias anim_current_frame v0 # may still want to use this for relative jumps?
+:alias anim_delay_counter v1 # used to time the animation by frames. set to the constant below.
+
+:alias bird_pos_x v2
+:alias bird_pos_y v3
+:alias bird_vel_y v4
+:alias bird_draw_y v5
+
+
+# filler constant to indicate a byte is for padding
+:const PAD 0
+
+:const BIRD_HEIGHT 4
+
+: struct_bird
+: memvar_bird_anim_current_frame
+	0x00
+: memvar_bird_anim_delay_counter
+	0x00
+: memvar_bird_pos_x
+	0x00
+: memvar_bird_pos_y
+	0x00
+: memvar_bird_vel_y
+	0x00
+: memvar_bird_draw_y
+	0x00
+#: memvar_bird_prev_draw_y
+#	0x00
+
+:macro save_bird_data {
+	i := struct_bird
+	save anim_current_frame - bird_draw_y
+}
+
+:macro load_bird_data {
+	i := struct_bird
+	load anim_current_frame - bird_draw_y
+}
+
+# this game won't use much memory, so we can replicate data
+# to speed up development  and simplify execution.
+: bird_flap
+
+	: bird_flap_0
+		0xE0 0xD0 0x90 0x60
+  : bird_flap_1
+		0x60 0xD0 0x90 0x60
+	: bird_flap_2
+		0x60 0xD0 0xD0 0x60
+	: bird_flap_3
+		0x60 0xD0 0xD0 0xE0
+	: bird_flap_4
+		0x60 0xD0 0xD0 0x60
+	: bird_flap_5
+		0x60 0xD0 0x90 0x60
+: bird_flap_last
+		0x60 0x90 0xD0 0x60
+
+
+# draft of hi-color bird
+# 0xE0 0xF0 0xF0 0x60 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x20
+# 0x30 0xF0 0x60 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+:calc BIRD_ANIM_LENGTH { ( bird_flap_last - bird_flap ) / BIRD_HEIGHT }
+
+
+:macro SET_I_TO_FRAME register {
+
+	i := bird_flap
+	
+		# load frame number and multiply by 4 to get final frame offset
+	math_1 <<= register
+	math_1 <<= math_1
+	
+	i += math_1
+}
+
+
+: animate_bird
+	
+	# Animates the bird sprite. It uses a delay factor and location
+	# Assumes that a clear instruction is used at the start of the draw cycle.
+	
+#	anim_prev_tick_frame := anim_current_frame
+	plane 1
+	if anim_delay_counter == 0 begin
+		
+		anim_current_frame += 1
+		# advance animation frame
+		if anim_current_frame >= BIRD_ANIM_LENGTH then anim_current_frame := 0
+		anim_delay_counter := ANIM_DELAY_FACTOR	
+	
+	else
+		anim_delay_counter -= 1
+ 	end
+
+	# draw bird
+	SET_I_TO_FRAME anim_current_frame
+	sprite bird_pos_x bird_draw_y BIRD_HEIGHT
+	
+	
+: end_animate_bird
+return
+
+
+:const GROUND_OBSTACLE_HEIGHT  15
+:calc  CACTUS_DRAW_Y           { 64 - GROUND_OBSTACLE_HEIGHT }
+# each of these fills the whole 15 bytes + a PAD byte to make address
+# selection easy when multiplying.
+: ground_obstacle_sprites
+	# setting for no obstacle at all
+	:const OBSTACLE_NONE	       0
+	
+	:const OBSTACLE_GROUND_SMALL 1
+	: obstacle_cactus_small # pad with a last byte to make multiplication easier
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x18 0x18 0x5A 0x7E 0x18 0x18 0x18 PAD
+		
+	:const OBSTACLE_GROUND_LARGE 2
+	: obstacle_cactus_large
+	  0x18 0x18 0x18 0x18 0xDB 0xDB 0xFF 0xFF
+		0x18 0x18 0x18 0x18 0x18 0x18 0x18 PAD
+
+
+:const obstacles_MAX_LENGTH    4
+:alias obstacles_end_index     v3
+:alias obstacles_time_to_next  v4
+:alias obstacles_chain_left    v5 # how many left in the current chain
+
+:alias obstacles_current_index vE
+
+:alias obstacle_type				   v0
+:alias obstacle_x							 v1
+:alias obstacle_y 						 v2
+
+:org 0x5FC
+: obstacle_metadata
+	# how many obstacles there are currently
+	0x04
+	# how many ticks until next obstacle
+	0x00 
+	# obstacles_chain_left
+	0x00
+	
+:const obstacle_STRUCT_SIZE 4
+:org 0x600
+: obstacle_data 
+# allocate storage for up to 10 obstacle positions.
+# Implementation quirks:
+# 	1. The PAD byte speeds multiplication
+#			The PAD byte makes the struct length a power of 2 so simple
+#     bitshifting can be used to seek through the array rather than
+#     complicated multiplication routines.
+#   2. This array will *always* be sorted
+#     This means that when delete an element, we can just save the
+#     elements one left of their original position. No cache in Chip-8
+#     so no need to worry about any of that.
+
+# type,x  , y,   pad
+	0x01 0x18 0x31 0x00
+: obstacle_1
+	0x02 0x20 0x31 0x00
+: obstacle_2
+	0x02 0x28 0x31 0x00
+: obstacle_3
+	0x01 0x30 0x31 0x00
+: obstacle_4
+	0x00 0x00 0x00 0x00
+: obstacle_5
+	0x00 0x00 0x00 0x00
+: obstacle_6
+	0x00 0x00 0x00 0x00
+: obstacle_7
+	0x00 0x00 0x00 0x00
+: obstacle_8
+	0x00 0x00 0x00 0x00
+: obstacle_9
+	0x00 0x00 0x00 0x00
+
+:monitor obstacle_data " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_1    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_2 	 " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_3    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_4    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_5    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_6    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_7    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_8    " type: %1i x:%1i y:%1i pad: %1i"
+
+
+
+:macro load_obstacle_metadata {
+	i := obstacle_metadata
+	load obstacles_end_index - obstacles_chain_left
+	#math_1 := 1
+	#obstacles_end_index -= math_1
+}
+:macro save_obstacle_metadata { 
+	i := obstacle_metadata
+	#math_1 := 1
+	#obstacles_end_index += math_1 
+	save obstacles_end_index - obstacles_chain_left
+}
+
+# used to shift i for lookahead quickly
+
+:alias obstacle_lookahead math_4
+
+:macro SET_WRITEADDR location {
+
+}
+:alias write_addr_hi           math_1
+:alias write_addr_lo           math_2
+
+: set_i_from_writeaddr
+
+	i := set_i_from_writeaddr_address
+	save write_addr_hi - write_addr_lo
+	
+	: set_i_from_writeaddr_instruction
+		0xF0 0x00
+	: set_i_from_writeaddr_address
+		0x00 0x00
+		
+return
+
+: update_obstacles
+	# update the obstacles. 
+	plane 1
+	#how many obstacles there currently are
+	load_obstacle_metadata
+	
+	obstacles_current_index := 0
+	
+	SET_ADDR obstacle_data 
+	set_i_from_addr
+	load obstacle_type - obstacle_y
+	
+	# obstacle lookahead used to alter the source address used for i
+	# so we copy each entry backward one space when saving to memory.
+	if obstacle_x > 0 begin
+		obstacle_lookahead := 0 # the first obstacle isn't past zero
+	
+	else
+		obstacle_lookahead := obstacle_STRUCT_SIZE # how far we'll look ahead when loading
+		# subtract the obstacle length
+		math_5 := 1
+		obstacles_end_index -= math_5
+		
+	end
+	
+	# if there are no obstacles, don't bother drawing any
+	if obstacles_end_index == 0 then jump obstacle_spawn
+	
+	# the obstacle lookahead means that we'll just skip the first obstacle and overwrite it
+	loop
+		# load the existing obstacle into memory
+		#:breakpoint
+		set_i_from_addr
+		#:breakpoint	check_loop_conditions
+		
+		# this is how we copy leftward: shift i forward by one struct length
+		# when the first obstacle must be eliminated
+		i += obstacle_lookahead
+		load obstacle_type - obstacle_y
+
+		#1.  move it left
+		math_1 := 1
+		obstacle_x -= math_1
+		
+		i := obstacle_cactus_small
+#jump temp
+		#2.  draw it, with the appropriate sprite
+		math_5 := obstacle_type
+		math_6 := 1
+		math_5 -= math_6
+
+		#3. Multiply by 16.
+		# This isn't wrapped in an if statement because there is
+		# and altering the number of instructions a lot creates
+		# weird flicker.
+		math_5 <<= math_5
+		math_5 <<= math_5
+		math_5 <<= math_5
+		math_5 <<= math_5
+		# actually select the sprite we're going to use for ground obstacles
+		i += math_5
+#: temp
+		sprite obstacle_x obstacle_y 15
+
+		# save the data for it
+
+    set_i_from_addr
+		save obstacle_type - obstacle_y
+
+		# advance the pointer
+		#:breakpoint check_offset_math
+		math_5 := obstacle_STRUCT_SIZE
+		addr_lo += math_5
+		addr_hi += vF
+
+		math_5 := 1
+		obstacles_current_index += math_5
+		
+	while obstacles_current_index < obstacles_end_index again
+	
+	# maybe add a padding loop here? do some NOOPS to pad the speed?
+	
+	save_obstacle_metadata
+	
+	: obstacle_spawn
+	# spawn a new one if needed
+	
+return
+
+
+: ground_decoration
+	0x88 0x22
+	
+: apply_gravity
+	value_b := 1
+	sign_b  := 0
+	
+	EXTRACT_VALUE_A bird_vel_y
+	EXTRACT_SIGN_A  bird_vel_y
+	ADD_S8_TEMPLATE bird_vel_y
+	
+return
+
+:const BOOST_VELOCITY 2 
+
+
+: update_bird
+	load_bird_data
+	bird_pos_y -= 0
+	bird_draw_y := bird_pos_y
+	
+	animate_bird
+	
+	save_bird_data
+	
+return
+
+: main 
+	hires
+	
+	
+	# Set up bird, sort of like a constructor.
+	
+	# set initial variables
+	bird_pos_y := 0
+	LD_INT8 bird_vel_y 8
+	
+	# persist them to memory
+	save_bird_data
+	
+	# draw a frame at initial position?
+	i := bird_flap
+	sprite bird_pos_x bird_draw_y BIRD_HEIGHT
+	
+	#draw_obstacle
+	
+	
+:const FRAME_LENGTH_IN_TIMER 15
+	# should now be bird_vel_y == 0
+: start
+	math_1 := FRAME_LENGTH_IN_TIMER
+	delay := math_1
+	clear
+	#update_bird
+	
+	#if bird_draw_y < 3 then jump game_over
+	
+	# temporary padding for execution timing
+
+		
+	update_obstacles
+	jump start
+	
+	# check if bird on the ground
+	if bird_draw_y >= 60 then jump game_over
+	
+	math_1 := 0
+	math_2 := delay
+	: wait
+	if math_2 != math_1 then jump wait
+	
+	jump start
+	
+
+: game_over
+	
+	v0 := key
+
+	
