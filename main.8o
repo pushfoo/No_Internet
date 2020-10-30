@@ -1,40 +1,24 @@
-# math registers, used to perform math
-:alias math_1 v8
-:alias math_2 v9
-:alias math_3 vA
-:alias math_4 vB
-:alias math_5 vC
-:alias math_6 vD
+# A simple runner game, imitating the dinosaur game in google chrome
 
+# Memory manipulation toolkit
+
+# these store full 16 bit addresses
 :alias addr_hi v6
 :alias addr_lo v7
 
-
-
-:alias sign_a math_1
-:alias sign_b math_2
-:alias value_a math_3
-:alias value_b math_4
-
-
-
-# if i clear the screen, no need to redraw anything?
-# v0 - v6
-# can use a register as a shift-back flag?
-# if an x coordinate of a ground obstacle is 0:
-#  don't increment the addr register pair.
-
-
-: set_i_from_addr
-	i := set_i_from_addr_location
+: set_i_from_addr # Set I to an arbitrary address in the registers specified above.
 	
+	# rewrite the code below to jump to arbitrary address specified in the registers below.
+	i := set_i_from_addr_location
 	save addr_hi - addr_lo
+	
 	: set_i_from_addr_command
 		0xF0 0x00
 	: set_i_from_addr_location
 		0x00 0x00
 
 return
+
 :monitor addr_hi 2 
 :monitor set_i_from_addr_location "0x%2x"
 
@@ -45,9 +29,28 @@ return
 	addr_lo := location_lo
 }
 
-# A simple signed arithmetic
+
+# math registers reserved(ish) for performing math.
+:alias math_1 v8
+:alias math_2 v9
+:alias math_3 vA
+:alias math_4 vB
+:alias math_5 vC
+:alias math_6 vD
+
+
+
+# A simple signed arithmetic. It's not the normal 2s complement kind,
+# it's meant to be very easy for beginners to read and follow, even
+# if that comes at the price of execution efficiency.
+
 :const NEG_BIT  0b10000000
 :const VAL_MASK 0b01111111
+
+:alias sign_a math_1
+:alias sign_b math_2
+:alias value_a math_3
+:alias value_b math_4
 
 # helper to automate compile-time bound checking on variables
 :macro ASSERT_IS_INT8 msg num {
@@ -271,10 +274,6 @@ return
 		0x60 0x90 0xD0 0x60
 
 
-# draft of hi-color bird
-# 0xE0 0xF0 0xF0 0x60 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x20
-# 0x30 0xF0 0x60 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-
 :calc BIRD_ANIM_LENGTH { ( bird_flap_last - bird_flap ) / BIRD_HEIGHT }
 
 
@@ -352,7 +351,7 @@ return
 :alias obstacle_x							 v1
 :alias obstacle_y 						 v2
 
-:org 0x5FC
+
 : obstacle_metadata
 	# how many obstacles there are currently
 	0x05
@@ -362,7 +361,7 @@ return
 	0x00
 	
 :const obstacle_STRUCT_SIZE 4
-:org 0x600
+
 : obstacle_data 
 # Allocate storage for up to 10 obstacle positions.
 # Implementation quirks:
@@ -409,7 +408,6 @@ return
 :monitor obstacle_8    " type: %1i x:%1i y:%1i pad: %1i"
 
 
-
 :macro load_obstacle_metadata {
 	i := obstacle_metadata
 	load obstacles_end_index - obstacles_chain_left
@@ -423,38 +421,20 @@ return
 	save obstacles_end_index - obstacles_chain_left
 }
 
-# used to shift i for lookahead quickly
-
-:alias obstacle_lookahead math_4
-
-:macro SET_WRITEADDR location {
-
-}
-:alias write_addr_hi           math_1
-:alias write_addr_lo           math_2
-
-: set_i_from_writeaddr
-
-	i := set_i_from_writeaddr_address
-	save write_addr_hi - write_addr_lo
-	
-	: set_i_from_writeaddr_instruction
-		0xF0 0x00
-	: set_i_from_writeaddr_address
-		0x00 0x00
-		
-return
-
 :macro DOUBLE_DRAW r1 r2 length {
 	plane 1
 	sprite r1 r2 length
 	plane 2
 	sprite r1 r2 length
 }
+
+:alias obstacle_lookahead math_4
+
 : update_obstacles
 	# update the obstacles. 
-	plane 2
-	#how many obstacles there currently are
+	
+	#Remember how many obstacles there currently are
+	# and some other stuff.
 	load_obstacle_metadata
 	
 	obstacles_current_index := 0
@@ -463,15 +443,19 @@ return
 	set_i_from_addr
 	load obstacle_type - obstacle_y
 	
-	# Obstacle lookahead is used to load 1 obstacle forward of the write destination
-	# so we can compact the array and erase the first element.
-	if obstacle_x > 0 begin
-		obstacle_lookahead := 0 # the first obstacle isn't past zero
+	# Obstacle lookahead is used to load 1 obstacle forward of
+	# the write destination so we can compact the array and erase
+	# the first element.
 	
-	else
-		obstacle_lookahead := obstacle_STRUCT_SIZE # how far we'll look ahead when loading
-		# subtract the obstacle length
-		math_5 := 1
+	if obstacle_x > 0 begin # no need to erase anything
+		obstacle_lookahead := 0 
+	else # set up to shift array left 1 element, overwriting the first
+		
+		# look ahead by 1 struct length
+		obstacle_lookahead := obstacle_STRUCT_SIZE 
+		
+		# reduce the number of elements we will iterate through
+		math_5 := 1 
 		obstacles_end_index -= math_5
 		
 	end
@@ -479,7 +463,7 @@ return
 	# If there are no obstacles, don't bother drawing any
 	if obstacles_end_index == 0 then jump obstacle_spawn
 	
-	# Move elements leftward, skipping and overwriting first element if it's at 0
+	# Move obstacles leftward, skipping + overwriting the 1st if its x==0
 	loop 
 		
 		#1. Load an element from memory to active registers, optionally skipping forward by 1
@@ -525,12 +509,11 @@ return
 		
 	while obstacles_current_index < obstacles_end_index again
 	
-	# maybe add a padding loop here? do some NOOPS to pad the speed?
 	
 	save_obstacle_metadata
 	
 	: obstacle_spawn
-	# spawn a new one if needed
+	# spawn new ones if needed here
 	
 return
 
@@ -616,7 +599,6 @@ return
 	i := bird_flap
 	sprite bird_pos_x bird_draw_y BIRD_HEIGHT
 	
-	#draw_obstacle
 	
 # might be able to adjust the timer constant until it's 1,
 # slowly increasing the difficulty of the game!
@@ -631,9 +613,6 @@ return
 	
 	#if bird_draw_y < 3 then jump game_over
 	
-	# temporary padding for execution timing
-
-		
 	update_obstacles
 	
 	i := dino_duck_left_up
