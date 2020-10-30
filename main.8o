@@ -364,16 +364,18 @@ return
 :const obstacle_STRUCT_SIZE 4
 :org 0x600
 : obstacle_data 
-# allocate storage for up to 10 obstacle positions.
+# Allocate storage for up to 10 obstacle positions.
 # Implementation quirks:
-# 	1. The PAD byte speeds multiplication
-#			The PAD byte makes the struct length a power of 2 so simple
-#     bitshifting can be used to seek through the array rather than
-#     complicated multiplication routines.
+# 	1. The last 0 byte speeds multiplication
+#			It increases the struct length to a power of 2 so simple
+#     bitshifting can be used to seek through the obstacle sprite
+#			table rather than complicated multiplication routines.
 #   2. This array will *always* be sorted
-#     This means that when delete an element, we can just save the
-#     elements one left of their original position. No cache in Chip-8
-#     so no need to worry about any of that.
+#     This means that when delete an element, we can save the
+#     elements one left of their original position instead of
+#     worrying about implementing a ring buffer in Octo. There
+#			is also no cache in Chip-8 so no need to worry about any
+#     of that.
 
 # type,x  , y,   pad
 	0x01 0x18 0x31 0x00
@@ -461,8 +463,8 @@ return
 	set_i_from_addr
 	load obstacle_type - obstacle_y
 	
-	# obstacle lookahead used to alter the source address used for i
-	# so we copy each entry backward one space when saving to memory.
+	# Obstacle lookahead is used to load 1 obstacle forward of the write destination
+	# so we can compact the array and erase the first element.
 	if obstacle_x > 0 begin
 		obstacle_lookahead := 0 # the first obstacle isn't past zero
 	
@@ -474,40 +476,38 @@ return
 		
 	end
 	
-	# if there are no obstacles, don't bother drawing any
+	# If there are no obstacles, don't bother drawing any
 	if obstacles_end_index == 0 then jump obstacle_spawn
 	
-	# the obstacle lookahead means that we'll just skip the first obstacle and overwrite it
-	loop
-		# load the existing obstacle into memory
-		#:breakpoint
-		set_i_from_addr
-		#:breakpoint	check_loop_conditions
+	# Move elements leftward, skipping and overwriting first element if it's at 0
+	loop 
 		
-		# this is how we copy leftward: shift i forward by one struct length
-		# when the first obstacle must be eliminated
-		i += obstacle_lookahead
+		#1. Load an element from memory to active registers, optionally skipping forward by 1
+		set_i_from_addr
+		i += obstacle_lookahead # this applies the skip
 		load obstacle_type - obstacle_y
 
-		#1.  move it left
+		#2.  Move the loaded obstacle left
 		math_1 := 1
 		obstacle_x -= math_1
 		
 		i := obstacle_cactus_small
-#jump temp
-		#2.  draw it, with the appropriate sprite
+
+		#2. Calculate any obstacle sprite table lookup we need to apply
 		math_5 := obstacle_type
 		math_6 := 1
 		math_5 -= math_6
 
-		#3. Multiply by 16.
-		math_5 <<= math_5
-		math_5 <<= math_5
-		math_5 <<= math_5
-		math_5 <<= math_5
-		# actually select the sprite we're going to use for ground obstacles
-		i += math_5
-#: temp
+		#3. Multiply by 16 & apply the offset if it isn't zero
+		math_6 := 0
+		if math_5 > math_6 begin
+			math_5 <<= math_5
+			math_5 <<= math_5
+			math_5 <<= math_5
+			math_5 <<= math_5
+			i += math_5
+		end
+
 		DOUBLE_DRAW obstacle_x obstacle_y 15
 		# save the data for it
 
@@ -620,7 +620,7 @@ return
 	
 # might be able to adjust the timer constant until it's 1,
 # slowly increasing the difficulty of the game!
-:const TICK_LENGTH_IN_TIMER 1
+:const TICK_LENGTH_IN_TIMER 6
 	# should now be bird_vel_y == 0
 : start
 	math_1 := TICK_LENGTH_IN_TIMER
@@ -637,7 +637,7 @@ return
 	update_obstacles
 	
 	i := dino_duck_left_up
-	math_1 := 1
+	math_1 := 16
 	math_2 := 48
 	
 	DOUBLE_DRAW math_1 math_2 0
