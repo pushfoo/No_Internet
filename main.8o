@@ -575,10 +575,10 @@ return
 	#draw_obstacle
 	
 	
-:const FRAME_LENGTH_IN_TIMER 15
+:const TICK_LENGTH_IN_TIMER 5
 	# should now be bird_vel_y == 0
 : start
-	math_1 := FRAME_LENGTH_IN_TIMER
+	math_1 := TICK_LENGTH_IN_TIMER
 	delay := math_1
 	clear
 	#update_bird
@@ -589,16 +589,18 @@ return
 
 		
 	update_obstacles
+		
+	math_1 := 0
+
+	: wait
+		math_2 := delay
+	if math_2 != math_1 then jump wait
+	
 	jump start
 	
 	# check if bird on the ground
 	if bird_draw_y >= 60 then jump game_over
-	
-	math_1 := 0
-	math_2 := delay
-	: wait
-	if math_2 != math_1 then jump wait
-	
+
 	jump start
 	
 
