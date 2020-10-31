@@ -212,107 +212,170 @@ return
 	
 }
 
+:macro BLIT_SPRITE r1 r2 length {
+	plane 1
+	sprite r1 r2 length
+	plane 2
+	sprite r1 r2 length
+}
 
-:const ANIM_DELAY_FACTOR  2  # how many game update ticks a given bird animation frame for.
+
+:const ANIM_DELAY_FACTOR  2  # how many game update ticks a given dino animation frame for.
 :alias anim_current_frame v0 # may still want to use this for relative jumps?
 :alias anim_delay_counter v1 # used to time the animation by frames. set to the constant below.
 
-:alias bird_pos_x v2
-:alias bird_pos_y v3
-:alias bird_vel_y v4
-:alias bird_draw_y v5
+:alias dino_state v2
+:alias dino_pos_y v3
+:alias dino_vel_y v4
+:alias dino_draw_y v5
 
 
 # filler constant to indicate a byte is for padding
 :const PAD 0
 
-:const BIRD_HEIGHT 4
+:const dino_HEIGHT 4
 
-: struct_bird
-: memvar_bird_anim_current_frame
+:const dino_X_POS  16
+
+: struct_dino
+: memvar_dino_anim_current_frame
 	0x00
-: memvar_bird_anim_delay_counter
+: memvar_dino_anim_delay_counter
 	0x00
-: memvar_bird_pos_x
+
+:const DINO_STATE_STILL     0
+:const DINO_STATE_RUNNING   1
+:const DINO_STATE_DUCKING   2
+:const DINO_STATE_ASCENDING 3
+:const DINO_STATE_CRY       4
+
+: memvar_dino_state
 	0x00
-: memvar_bird_pos_y
+: memvar_dino_pos_y
 	0x00
-: memvar_bird_vel_y
+: memvar_dino_vel_y
 	0x00
-: memvar_bird_draw_y
+: memvar_dino_draw_y
 	0x00
-#: memvar_bird_prev_draw_y
+#: memvar_dino_prev_draw_y
 #	0x00
 
-:macro save_bird_data {
-	i := struct_bird
-	save anim_current_frame - bird_draw_y
+:macro save_dino_data {
+	i := struct_dino
+	save anim_current_frame - dino_draw_y
 }
 
-:macro load_bird_data {
-	i := struct_bird
-	load anim_current_frame - bird_draw_y
+:macro load_dino_data {
+	i := struct_dino
+	load anim_current_frame - dino_draw_y
 }
 
+: dino_still # for the start of the game
+	0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
+	0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
+	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
+	0x06 0xC0 0x04 0x80 0x04 0x80 0x06 0xC0
+	
+: dino_stand
+	: dino_stand_left_up
+		0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
+		0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
+		0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
+		0x06 0xC0 0x04 0x80 0x04 0x40 0x06 0x00
+
+	: dino_stand_right_up
+		0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
+		0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
+		0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
+		0x06 0xC0 0x04 0x80 0x02 0x80 0x00 0xC0
+		
+: dino_duck
+	: dino_duck_left_up
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x7F 0xFF 0xFF 0xFB 0xDF 0xFF 0x8F 0xFF
+		0x86 0xD0 0xA4 0x98 0x44 0x40 0x06 0x00
+
+	: dino_duck_right_up
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x7F 0xFF 0xFF 0xFB 0xDF 0xFF 0x8F 0xFF
+		0x86 0xD0 0xA4 0x98 0x42 0x80 0x00 0xC0
+
+: dino_cry
+	0x00 0x3E 0x00 0x47 0x00 0x57 0x80 0x47
+	0x80 0x6E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
+	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
+	0x06 0xC0 0x04 0x80 0x04 0x40 0x06 0x00
+	
 # this game won't use much memory, so we can replicate data
 # to speed up development  and simplify execution.
-: bird_flap
+: dino_flap
 
-	: bird_flap_0
+	: dino_flap_0
 		0xE0 0xD0 0x90 0x60
-  : bird_flap_1
+  : dino_flap_1
 		0x60 0xD0 0x90 0x60
-	: bird_flap_2
+	: dino_flap_2
 		0x60 0xD0 0xD0 0x60
-	: bird_flap_3
+	: dino_flap_3
 		0x60 0xD0 0xD0 0xE0
-	: bird_flap_4
+	: dino_flap_4
 		0x60 0xD0 0xD0 0x60
-	: bird_flap_5
+	: dino_flap_5
 		0x60 0xD0 0x90 0x60
-: bird_flap_last
+: dino_flap_last
 		0x60 0x90 0xD0 0x60
 
 
-:calc BIRD_ANIM_LENGTH { ( bird_flap_last - bird_flap ) / BIRD_HEIGHT }
+#:calc dino_ANIM_LENGTH { ( dino_flap_last - dino_flap ) / dino_HEIGHT }
+:const dino_ANIM_LENGTH 2 # no longer have multiple frames of it.
 
+:macro SET_I_TO_FRAME frame_index_register {
 
-:macro SET_I_TO_FRAME register {
-
-	i := bird_flap
-	
-		# load frame number and multiply by 4 to get final frame offset
-	math_1 <<= register
+# load frame number and multiply by 32 (dino sprite length)  to get final frame offset
+	math_1 <<= frame_index_register
+	math_1 <<= math_1
+	math_1 <<= math_1 
+	math_1 <<= math_1
 	math_1 <<= math_1
 	
 	i += math_1
 }
 
 
-: animate_bird
+: animate_dino
 	
-	# Animates the bird sprite. It uses a delay factor and location
+	# Animates the dino sprite. It uses a delay factor and location
 	# Assumes that a clear instruction is used at the start of the draw cycle.
 	
 #	anim_prev_tick_frame := anim_current_frame
-	plane 2
 	if anim_delay_counter == 0 begin
 		
 		anim_current_frame += 1
 		# advance animation frame
-		if anim_current_frame >= BIRD_ANIM_LENGTH then anim_current_frame := 0
+		if anim_current_frame >= dino_ANIM_LENGTH then anim_current_frame := 0
 		anim_delay_counter := ANIM_DELAY_FACTOR	
 	
 	else
 		anim_delay_counter -= 1
  	end
 
-	# draw bird
+	# select dino animation state
+	math_1 := DINO_STATE_RUNNING
+	if dino_state == math_1 begin
+		i := dino_stand
+	else
+		i := dino_duck
+	end
+	
 	SET_I_TO_FRAME anim_current_frame
-	sprite bird_pos_x bird_draw_y BIRD_HEIGHT
+	math_1 := dino_X_POS
+	
+	BLIT_SPRITE math_1 dino_draw_y 0
 	
 	
-: end_animate_bird
+: end_animate_dino
 return
 
 
@@ -421,13 +484,6 @@ return
 	save obstacles_end_index - obstacles_chain_left
 }
 
-:macro BLIT_SPRITE r1 r2 length {
-	plane 1
-	sprite r1 r2 length
-	plane 2
-	sprite r1 r2 length
-}
-
 :alias obstacle_lookahead math_4
 
 : update_obstacles
@@ -517,43 +573,6 @@ return
 	
 return
 
-:const DINO_SPRITE_LENGTH 32
-# 16x16 dino sprites
-: dino_still # for the start of the game
-	0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
-	0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
-	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
-	0x06 0xC0 0x04 0x80 0x04 0x80 0x06 0xC0
-
-: dino_stand_left_up
-	0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
-	0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
-	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
-	0x06 0xC0 0x04 0x80 0x04 0x40 0x06 0x00
-
-: dino_stand_right_up
-	0x00 0x3E 0x00 0x7F 0x00 0x6F 0x80 0x7F
-	0x80 0x7E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
-	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
-	0x06 0xC0 0x04 0x80 0x02 0x80 0x00 0xC0
-
-: dino_duck_left_up
-	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-	0x7F 0xFF 0xFF 0xFB 0xDF 0xFF 0x8F 0xFF
-	0x86 0xD0 0xA4 0x98 0x44 0x40 0x06 0x00
-
-: dino_duck_right_up
-	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-	0x7F 0xFF 0xFF 0xFB 0xDF 0xFF 0x8F 0xFF
-	0x86 0xD0 0xA4 0x98 0x42 0x80 0x00 0xC0
-
-: dino_cry
-	0x00 0x3E 0x00 0x47 0x00 0x57 0x80 0x47
-	0x80 0x6E 0x80 0xF0 0xC1 0xF0 0xE3 0xFC
-	0x7F 0xF4 0x3F 0xE0 0x1F 0xC0 0x0F 0xC0
-	0x06 0xC0 0x04 0x80 0x04 0x40 0x06 0x00
 
 : ground_decoration
 	0x88 0x22
@@ -562,23 +581,23 @@ return
 	value_b := 1
 	sign_b  := 0
 	
-	EXTRACT_VALUE_A bird_vel_y
-	EXTRACT_SIGN_A  bird_vel_y
-	ADD_S8_TEMPLATE bird_vel_y
+	EXTRACT_VALUE_A dino_vel_y
+	EXTRACT_SIGN_A  dino_vel_y
+	ADD_S8_TEMPLATE dino_vel_y
 	
 return
 
 :const BOOST_VELOCITY 2 
 
 
-: update_bird
-	load_bird_data
-	bird_pos_y -= 0
-	bird_draw_y := bird_pos_y
+: update_dino
+	load_dino_data
+	dino_pos_y -= 0
+	dino_draw_y := 48
 	
-	animate_bird
+	animate_dino
 	
-	save_bird_data
+	save_dino_data
 	
 return
 
@@ -591,46 +610,52 @@ return
 	
 return
 
-: main 
+: main
+: play_game
 	hires
 	
 	
-	# Set up bird, sort of like a constructor.
+	# Set up dino, sort of like a constructor.
 	
 	# set initial variables
-	bird_pos_y := 0
-	LD_INT8 bird_vel_y 8
+	dino_pos_y := 0
+	dino_draw_y := 48
+	LD_INT8 dino_vel_y 8
+	dino_state := DINO_STATE_DUCKING
 	
 	# persist them to memory
-	save_bird_data
+	save_dino_data
 	
 	# draw a frame at initial position?
-	i := bird_flap
-	sprite bird_pos_x bird_draw_y BIRD_HEIGHT
+	#i := dino_flap
+	#sprite dino_pos_x dino_draw_y dino_HEIGHT
 	
 	
 # might be able to adjust the timer constant until it's 1,
 # slowly increasing the difficulty of the game!
 :const TICK_LENGTH_IN_TIMER 6
-	# should now be bird_vel_y == 0
+	# should now be dino_vel_y == 0
 : start
 	math_1 := TICK_LENGTH_IN_TIMER
 	delay := math_1
 	plane 3
 	clear
-	#update_bird
+	#update_dino
 	
-	#if bird_draw_y < 3 then jump game_over
+	#if dino_draw_y < 3 then jump game_over
 	
 	update_obstacles
 	
 	i := dino_duck_left_up
-	math_1 := 16
-	math_2 := 48
+	#math_1 := 16
+	#math_2 := 48
 	
-	BLIT_SPRITE math_1 math_2 0
+	#BLIT_SPRITE math_1 math_2 0
 	# math_2 := 
 	# sprite 
+	
+	update_dino
+	
 	math_1 := 1
 	if vf == math_1 then jump game_over
 	
@@ -642,8 +667,8 @@ return
 	
 	jump start
 	
-	# check if bird on the ground
-	if bird_draw_y >= 60 then jump game_over
+	# check if dino on the ground
+	if dino_draw_y >= 60 then jump game_over
 
 	jump start
 	
