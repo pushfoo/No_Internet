@@ -377,15 +377,15 @@ return
 #     of that.
 
 # type,x  , y,   pad
-	0x01 0x18 0x31 0x00
+	0x01 0x28 0x31 0x00
 : obstacle_1
-	0x02 0x20 0x31 0x00
+	0x02 0x30 0x31 0x00
 : obstacle_2
-	0x02 0x28 0x31 0x00
+	0x02 0x38 0x31 0x00
 : obstacle_3
-	0x01 0x30 0x31 0x00
+	0x01 0x40 0x31 0x00
 : obstacle_4
-	0x03 0x38 0x10 0x00
+	0x03 0x48 0x10 0x00
 : obstacle_5
 	0x00 0x00 0x00 0x00
 : obstacle_6
@@ -421,7 +421,7 @@ return
 	save obstacles_end_index - obstacles_chain_left
 }
 
-:macro DOUBLE_DRAW r1 r2 length {
+:macro BLIT_SPRITE r1 r2 length {
 	plane 1
 	sprite r1 r2 length
 	plane 2
@@ -492,7 +492,7 @@ return
 			i += math_5
 		end
 
-		DOUBLE_DRAW obstacle_x obstacle_y 15
+		BLIT_SPRITE obstacle_x obstacle_y 15
 		# save the data for it
 
     set_i_from_addr
@@ -582,6 +582,15 @@ return
 	
 return
 
+
+: score_bcd_storage
+	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+
+: draw_score
+	
+return
+
 : main 
 	hires
 	
@@ -619,9 +628,11 @@ return
 	math_1 := 16
 	math_2 := 48
 	
-	DOUBLE_DRAW math_1 math_2 0
+	BLIT_SPRITE math_1 math_2 0
 	# math_2 := 
 	# sprite 
+	math_1 := 1
+	if vf == math_1 then jump game_over
 	
 	math_1 := 0
 
@@ -639,6 +650,13 @@ return
 
 : game_over
 	
-	v0 := key
+	math_3 := 10
+	i := dino_still
+	BLIT_SPRITE math_3 math_3 0
+	# block on game over
+	math_1 := key
+	
+	# return to main
+	jump main
 
 	
