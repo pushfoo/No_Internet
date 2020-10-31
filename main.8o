@@ -344,6 +344,20 @@ return
 }
 
 
+: blit_current_dino_frame
+	
+	math_1 := DINO_STATE_RUNNING
+	if dino_state == math_1 begin
+		i := dino_stand
+	else
+		i := dino_duck
+	end
+	SET_I_TO_FRAME anim_current_frame
+	math_1 := dino_X_POS
+	
+	BLIT_SPRITE math_1 dino_draw_y 0
+return
+
 : animate_dino
 	
 	# Animates the dino sprite. It uses a delay factor and location
@@ -361,18 +375,11 @@ return
 		anim_delay_counter -= 1
  	end
 
-	# select dino animation state
-	math_1 := DINO_STATE_RUNNING
-	if dino_state == math_1 begin
-		i := dino_stand
-	else
-		i := dino_duck
-	end
-	
-	SET_I_TO_FRAME anim_current_frame
-	math_1 := dino_X_POS
-	
-	BLIT_SPRITE math_1 dino_draw_y 0
+	blit_current_dino_frame
+
+return
+
+
 	
 	
 : end_animate_dino
@@ -675,9 +682,16 @@ return
 
 : game_over
 	
-	math_3 := 10
-	i := dino_still
-	BLIT_SPRITE math_3 math_3 0
+	#load_dino_data
+	
+	#erase old dino
+	blit_current_dino_frame
+	
+	# draw crying dino
+	i := dino_cry
+	math_3 := dino_X_POS
+	BLIT_SPRITE math_3 dino_draw_y 0
+	
 	# block on game over
 	math_1 := key
 	
