@@ -66,21 +66,23 @@ return
 
 :const OBSTACLE_USABLE_LENGTH  15
 
-# each of these fills the whole 15 bytes + a PAD byte to make address
-# selection easy when multiplying.
+# Each of these uses the whole 15 bytes to simplify drawing.
+# The last a byte is padding to make address selection easy
+# when multiplying since it's just bit shifting if n = 16.
+
 : ground_obstacle_sprites
 	# setting for no obstacle at all
 	:const OBSTACLE_NONE	       0
 	
 	:const OBSTACLE_GROUND_SMALL 1
-	: obstacle_cactus_small # pad with a last byte to make multiplication easier
+	: obstacle_cactus_small 
 		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-		0x18 0x18 0x5A 0x7E 0x18 0x18 0x18 0x00
+		0x00 0x20 0x20 0xA8 0xF8 0x20 0x20 0x00
 		
 	:const OBSTACLE_GROUND_LARGE 2
 	: obstacle_cactus_large
-	  0x18 0x18 0x18 0x18 0xDB 0xDB 0xFF 0xFF
-		0x18 0x18 0x18 0x18 0x18 0x18 0x18 0x00
+		0x00 0x00 0x00 0x00 0x20 0x20 0x20 0x20
+		0xA8 0xA8 0xF8 0x20 0x20 0x20 0x20 0x00
 	
 	:const OBSTACLE_PTERODACTYL  3
 	: obstacle_pterodactyl
@@ -214,8 +216,11 @@ return
 		load obstacle_type - obstacle_y
 
 		#2.  Move the loaded obstacle left
-		math_1 := 1
 		obstacle_x -= 2
+		
+		# hacky overflow protection for badly placed items
+		math_1 := SCREEN_WIDTH
+		if obstacle_x > math_1 then obstacle_x := 0
 		
 		i := obstacle_cactus_small
 
@@ -608,7 +613,7 @@ return
 :const Y_SCALE_FACTOR 2
 
 :calc DINO_JUMP_VEL_DROP   { DINO_JUMP_VEL_START / 2 }
-
+:calc DINO_POS_Y_MAX       { dino_RUNNING_DRAW_Y * 2 }
 #:calc DINO_JUMP_VEL_START
 
 : do_physics
@@ -633,6 +638,9 @@ return
 		dino_pos_y := 0
 		dino_state := DINO_STATE_RUNNING
 	end
+	
+	math_1 := DINO_POS_Y_MAX
+	if dino_pos_y >= math_1 then dino_pos_y := DINO_POS_Y_MAX
 	#:breakpoint bb
 	
 return
@@ -756,7 +764,7 @@ return
 		plane 3
 		clear
 
-		#update_obstacles
+		update_obstacles
 		
 		update_dino
 
