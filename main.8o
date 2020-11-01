@@ -103,7 +103,7 @@ return
 
 : obstacle_metadata
 	# how many obstacles there are currently
-	0x05
+	0x04
 	# how many ticks until next obstacle
 	0x00 
 	# obstacles_chain_left
@@ -128,13 +128,13 @@ return
 # type,x  , y,   pad
 	0x01 0x28 0x31 0x00
 : obstacle_1
-	0x02 0x30 0x31 0x00
+	0x02 0x40 0x31 0x00
 : obstacle_2
-	0x02 0x38 0x31 0x00
+	0x02 0x78 0x31 0x00
 : obstacle_3
-	0x01 0x40 0x31 0x00
+	0x01 0x70 0x31 0x00
 : obstacle_4
-	0x03 0x48 0x10 0x00
+	0x03 0x88 0x10 0x00
 : obstacle_5
 	0x00 0x00 0x00 0x00
 : obstacle_6
@@ -215,7 +215,7 @@ return
 
 		#2.  Move the loaded obstacle left
 		math_1 := 1
-		obstacle_x -= math_1
+		obstacle_x -= 2
 		
 		i := obstacle_cactus_small
 
@@ -600,17 +600,20 @@ return
 return
 
 
-:const DRAW_SCALE_FACTOR 16
+
 :calc dino_ground_pos { 1 }
 
 
-:const DINO_JUMP_VEL_START -10
+:const DINO_JUMP_VEL_START 18
+:const Y_SCALE_FACTOR 2
+
 :calc DINO_JUMP_VEL_DROP   { DINO_JUMP_VEL_START / 2 }
 
+#:calc DINO_JUMP_VEL_START
 
 : do_physics
 
-	value_b := 1
+	value_b := 2
 	sign_b  := NEG_BIT
 	
 	EXTRACT_SIGN_A  dino_vel_y
@@ -645,14 +648,16 @@ return
 	
 	#:breakpoint dino_states
 	#jump end_dino_update
-	math_3 := DINO_STATE_RUNNING
-	if dino_state == math_3 begin
+	#math_3 := DINO_STATE_RUNNING
+	if dino_state == DINO_STATE_RUNNING begin
 		if math_1 key begin
 			
 			dino_state := DINO_STATE_JUMPING
 			
 			# set up ten
-		  dino_vel_y := 8
+		  dino_vel_y := DINO_JUMP_VEL_START
+			
+			# try to do buzzer
 			math_1 := 5
 			buzzer := math_1
 			
@@ -678,22 +683,20 @@ return
 		jump end_dino_update
 	end
 	
-	# last of elif equivalent chain, stop jumping if jump key not pressed anymore
-	math_3 := DINO_STATE_JUMPING
-	if dino_state == math_3 begin
-		do_physics
+	# just assumpe it's air here
+	do_physics
 		
 		#if math_1 -key then dino_state := DINO_STATE_RUNNING
-	end
 	
 	: end_dino_update
 	
 	
 	# draw on the ground if not jumping
-	math_3 := DINO_STATE_JUMPING
-	if dino_state == math_3 begin
+	
+	if dino_state == DINO_STATE_JUMPING begin
+		math_1 >>= dino_pos_y
 		dino_draw_y := 48
-		dino_draw_y -= dino_pos_y
+		dino_draw_y -= math_1
 	else
 		dino_draw_y := dino_RUNNING_DRAW_Y
 	end
@@ -736,7 +739,7 @@ return
 
 # might be able to adjust the timer constant until it's 1,
 # slowly increasing the difficulty of the game!
-:const TICK_LENGTH_IN_TIMER 2
+:const TICK_LENGTH_IN_TIMER 4
 	# should now be dino_vel_y == 0
 : start
 
@@ -746,8 +749,8 @@ return
 		plane 3
 		clear
 
-		#update_obstacles
-
+		update_obstacles
+		
 		update_dino
 
 		math_1 := 1
