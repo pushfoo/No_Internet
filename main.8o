@@ -236,12 +236,12 @@ return
 		
 		# Draw using the first 15 rows of data from the obstacle type entry
 		BLIT_SPRITE obstacle_x obstacle_y OBSTACLE_USABLE_LENGTH
+		
 		# save the data for it
-
     set_i_from_addr
 		save obstacle_type - obstacle_y
 
-		# advance the pointer
+		# advance the write pointer
 		#:breakpoint check_offset_math
 		math_5 := obstacle_STRUCT_SIZE
 		addr_lo += math_5
@@ -296,9 +296,12 @@ return
 	ASSERT_IS_INT8 "Signed 8-bit constants loaded to a register must be between -127 and 127" NUM
 	
 	SPLIT_INT8_CONST NUM
+	:calc SIGN_NUM  { ( NUM < 0 ) << 8 }
+	:calc VALUE_NUM { NUM & VAL_MASK   }
 	
-	REG := VALUE_C
-	sign_b := SIGN_C
+	REG := VALUE_NUM
+	sign_b := SIGN_NUM
+	
 	REG |= sign_b
 }
 
@@ -445,14 +448,14 @@ return
 :alias dino_state v2
 :alias dino_pos_y v3
 :alias dino_vel_y v4
-:alias dino_draw_y v5
+:alias dino_draw_y math_6
 
 
 # filler constant to indicate a byte is for padding
 :const PAD 0
 
 :const dino_HEIGHT   16
-:calc  dino_GROUND_Y { SCREEN_HEIGHT - dino_HEIGHT } 
+:calc  dino_RUNNING_DRAW_Y { SCREEN_HEIGHT - dino_HEIGHT } 
 
 :const dino_X_POS  16
 
@@ -466,7 +469,8 @@ return
 :const DINO_STATE_RUNNING   1
 :const DINO_STATE_DUCKING   2
 :const DINO_STATE_JUMPING	  3
-:const DINO_STATE_CRYING    4
+:const DINO_STATE_FALLING   4
+:const DINO_STATE_CRYING    5
 
 : memvar_dino_state
 	0x00
@@ -481,12 +485,12 @@ return
 
 :macro save_dino_data {
 	i := struct_dino
-	save anim_current_frame - dino_draw_y
+	save anim_current_frame - dino_vel_y
 }
 
 :macro load_dino_data {
 	i := struct_dino
-	load anim_current_frame - dino_draw_y
+	load anim_current_frame - dino_vel_y
 }
 
 : dino_still # for the start of the game
@@ -595,11 +599,39 @@ return
 	
 return
 
-:const BOOST_VELOCITY 2 
 
-:const DINO_JUMP_VEL_START -12
+:const DRAW_SCALE_FACTOR 16
+:calc dino_ground_pos { 1 }
+
+
+:const DINO_JUMP_VEL_START -10
 :calc DINO_JUMP_VEL_DROP   { DINO_JUMP_VEL_START / 2 }
 
+
+: do_physics
+
+	value_b := 1
+	sign_b  := NEG_BIT
+	
+	EXTRACT_SIGN_A  dino_vel_y
+	EXTRACT_VALUE_A dino_vel_y
+	
+	#:breakpoint aa
+	ADD_S8_TEMPLATE dino_vel_y
+	
+	ADD_INT8_INT8 dino_pos_y dino_vel_y
+	
+	math_1 := NEG_BIT
+	math_1 &= dino_pos_y
+	
+	# clamp it, can't go below ground
+	if math_1 == NEG_BIT begin
+		dino_pos_y := 0
+		dino_state := DINO_STATE_RUNNING
+	end
+	#:breakpoint bb
+	
+return
 
 : update_dino
 	load_dino_data
@@ -609,16 +641,22 @@ return
 	math_2 := OCTO_KEY_S
 	
 	
-	#dino_draw_y := dino_GROUND_Y
+	#dino_pos_y
 	
 	#:breakpoint dino_states
 	#jump end_dino_update
 	math_3 := DINO_STATE_RUNNING
 	if dino_state == math_3 begin
 		if math_1 key begin
+			
 			dino_state := DINO_STATE_JUMPING
+			
+			# set up ten
+		  dino_vel_y := 8
 			math_1 := 5
 			buzzer := math_1
+			
+			
 			jump end_dino_update
 		end
 		
@@ -643,16 +681,21 @@ return
 	# last of elif equivalent chain, stop jumping if jump key not pressed anymore
 	math_3 := DINO_STATE_JUMPING
 	if dino_state == math_3 begin
-		if math_1 -key then dino_state := DINO_STATE_RUNNING
+		do_physics
+		
+		#if math_1 -key then dino_state := DINO_STATE_RUNNING
 	end
+	
 	: end_dino_update
+	
 	
 	# draw on the ground if not jumping
 	math_3 := DINO_STATE_JUMPING
 	if dino_state == math_3 begin
-		dino_draw_y := 24
+		dino_draw_y := 48
+		dino_draw_y -= dino_pos_y
 	else
-		dino_draw_y := dino_GROUND_Y
+		dino_draw_y := dino_RUNNING_DRAW_Y
 	end
 	
 	animate_dino
@@ -679,7 +722,7 @@ return
 	
 	# set initial variables
 	dino_pos_y := 0
-	dino_draw_y := dino_GROUND_Y
+	dino_draw_y := dino_RUNNING_DRAW_Y
 	LD_INT8 dino_vel_y 8
 	dino_state := DINO_STATE_RUNNING
 	
@@ -690,47 +733,33 @@ return
 	#i := dino_flap
 	#sprite dino_pos_x dino_draw_y dino_HEIGHT
 	
-	
+
 # might be able to adjust the timer constant until it's 1,
 # slowly increasing the difficulty of the game!
-:const TICK_LENGTH_IN_TIMER 6
+:const TICK_LENGTH_IN_TIMER 2
 	# should now be dino_vel_y == 0
 : start
-	math_1 := TICK_LENGTH_IN_TIMER
-	delay := math_1
-	plane 3
-	clear
-	#update_dino
-	
-	#if dino_draw_y < 3 then jump game_over
-	
-	update_obstacles
-	
-	i := dino_duck_left_up
-	#math_1 := 16
-	#math_2 := 48
-	
-	#BLIT_SPRITE math_1 math_2 0
-	# math_2 := 
-	# sprite 
-	
-	update_dino
-	
-	math_1 := 1
-	if vf == math_1 then jump game_over
-	
-	math_1 := 0
 
-	: wait
-		math_2 := delay
-	if math_2 != math_1 then jump wait
-	
-	jump start
-	
-	# check if dino on the ground
-	if dino_draw_y >= 60 then jump game_over
+	loop
+		math_1 := TICK_LENGTH_IN_TIMER
+		delay := math_1
+		plane 3
+		clear
 
-	jump start
+		#update_obstacles
+
+		update_dino
+
+		math_1 := 1
+		if vf == math_1 then jump game_over
+
+
+		math_1 := 0
+
+		: wait
+			math_2 := delay
+		if math_2 != math_1 then jump wait
+	again
 	
 
 : game_over
