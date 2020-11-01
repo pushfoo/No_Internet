@@ -105,7 +105,7 @@ return
 
 : obstacle_metadata
 	# how many obstacles there are currently
-	0x04
+	0x05
 	# how many ticks until next obstacle
 	0x00 
 	# obstacles_chain_left
@@ -128,15 +128,15 @@ return
 #     of that.
 
 # type,x  , y,   pad
-	0x01 0x28 0x31 0x00
+	0x01 0x40 0x31 0x00
 : obstacle_1
-	0x02 0x40 0x31 0x00
+	0x01 0x48 0x31 0x00
 : obstacle_2
-	0x02 0x78 0x31 0x00
+	0x01 0x50 0x31 0x00
 : obstacle_3
 	0x01 0x70 0x31 0x00
 : obstacle_4
-	0x03 0x88 0x10 0x00
+	0x03 0x80 0x31 0x00
 : obstacle_5
 	0x00 0x00 0x00 0x00
 : obstacle_6
@@ -172,7 +172,13 @@ return
 	save obstacles_end_index - obstacles_chain_left
 }
 
-:alias obstacle_lookahead math_4
+:alias obstacle_lookahead   math_4
+
+
+
+# not the with of the screen so we can set up chains off screen
+:const obstacle_MAX_VALID_X 128    
+
 
 : update_obstacles
 	# update the obstacles. 
@@ -218,9 +224,14 @@ return
 		#2.  Move the loaded obstacle left
 		obstacle_x -= 2
 		
-		# hacky overflow protection for badly placed items
-		math_1 := SCREEN_WIDTH
+		# hacky overflow protection for badly placed items, prep it for deletion
+		math_1 := obstacle_MAX_VALID_X
 		if obstacle_x > math_1 then obstacle_x := 0
+		
+		# only draw obstacles that are actually on screen
+		:calc DISPLAY_THRESHOLD { SCREEN_WIDTH - 8 }
+		math_1 := DISPLAY_THRESHOLD
+		if obstacle_x > math_1 then jump save_updated_obstacle
 		
 		i := obstacle_cactus_small
 
@@ -242,6 +253,7 @@ return
 		# Draw using the first 15 rows of data from the obstacle type entry
 		BLIT_SPRITE obstacle_x obstacle_y OBSTACLE_USABLE_LENGTH
 		
+		: save_updated_obstacle
 		# save the data for it
     set_i_from_addr
 		save obstacle_type - obstacle_y
