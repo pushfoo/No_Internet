@@ -1,5 +1,10 @@
 # A simple runner game, imitating the dinosaur game in google chrome
 
+
+#############################################################
+##### General setuop & utilities                      #######
+#############################################################
+
 # Memory manipulation toolkit
 
 # these store full 16 bit addresses
@@ -8,7 +13,7 @@
 
 : set_i_from_addr # Set I to an arbitrary address in the registers specified above.
 	
-	# rewrite the code below to jump to arbitrary address specified in the registers below.
+	# rewrite the labels below to jump to arbitrary address specified in the registers below.
 	i := set_i_from_addr_location
 	save addr_hi - addr_lo
 	
@@ -38,7 +43,227 @@ return
 :alias math_5 vC
 :alias math_6 vD
 
+:const SCREEN_WIDTH  128
+:const SCREEN_HEIGHT 64
 
+# quick, inefficient, but i don't yet know 
+# how palettes work with chip8 export. On most
+# palettes, this will be a darker color than
+# the initial background, giving sufficient
+# contrast to be legible.
+:macro BLIT_SPRITE r1 r2 length {
+	plane 1
+	sprite r1 r2 length
+	plane 2
+	sprite r1 r2 length
+}
+
+
+##############################################################
+####### Obstacle processing                          #########
+##############################################################
+
+
+:const OBSTACLE_USABLE_LENGTH  15
+
+# each of these fills the whole 15 bytes + a PAD byte to make address
+# selection easy when multiplying.
+: ground_obstacle_sprites
+	# setting for no obstacle at all
+	:const OBSTACLE_NONE	       0
+	
+	:const OBSTACLE_GROUND_SMALL 1
+	: obstacle_cactus_small # pad with a last byte to make multiplication easier
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x18 0x18 0x5A 0x7E 0x18 0x18 0x18 0x00
+		
+	:const OBSTACLE_GROUND_LARGE 2
+	: obstacle_cactus_large
+	  0x18 0x18 0x18 0x18 0xDB 0xDB 0xFF 0xFF
+		0x18 0x18 0x18 0x18 0x18 0x18 0x18 0x00
+	
+	:const OBSTACLE_PTERODACTYL  3
+	: obstacle_pterodactyl
+		0x63 0x14 0x5C 0xFF 0x14 0x00 0x00 0x00
+		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+
+# metadata for the obstacle array?
+:const obstacles_MAX_LENGTH    10
+:alias obstacles_end_index     v3
+:alias obstacles_time_to_next  v4
+:alias obstacles_chain_left    v5 # how many left in the current chain
+
+:alias obstacles_current_index vE
+
+# used to hold the obstacle currently processed
+:alias obstacle_type				   v0
+:alias obstacle_x							 v1
+:alias obstacle_y 						 v2
+
+
+: obstacle_metadata
+	# how many obstacles there are currently
+	0x05
+	# how many ticks until next obstacle
+	0x00 
+	# obstacles_chain_left
+	0x00
+	
+:const obstacle_STRUCT_SIZE 4
+
+: obstacle_data 
+# Allocate storage for up to 10 obstacle positions.
+# Implementation quirks:
+# 	1. The last 0 byte speeds multiplication
+#			It increases the struct length to a power of 2 so simple
+#     bitshifting can be used to seek through the obstacle sprite
+#			table rather than complicated multiplication routines.
+#   2. This array will *always* be sorted
+#     This means that when delete an element, we can save the
+#     elements one left of their original position instead of
+#     worrying about implementing a ring buffer in Octo. There
+#			is also no cache in Chip-8 so no need to worry about any
+#     of that.
+
+# type,x  , y,   pad
+	0x01 0x28 0x31 0x00
+: obstacle_1
+	0x02 0x30 0x31 0x00
+: obstacle_2
+	0x02 0x38 0x31 0x00
+: obstacle_3
+	0x01 0x40 0x31 0x00
+: obstacle_4
+	0x03 0x48 0x10 0x00
+: obstacle_5
+	0x00 0x00 0x00 0x00
+: obstacle_6
+	0x00 0x00 0x00 0x00
+: obstacle_7
+	0x00 0x00 0x00 0x00
+: obstacle_8
+	0x00 0x00 0x00 0x00
+: obstacle_9
+	0x00 0x00 0x00 0x00
+
+:monitor obstacle_data " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_1    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_2 	 " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_3    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_4    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_5    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_6    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_7    " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_8    " type: %1i x:%1i y:%1i pad: %1i"
+
+
+:macro load_obstacle_metadata {
+	i := obstacle_metadata
+	load obstacles_end_index - obstacles_chain_left
+	#math_1 := 1
+	#obstacles_end_index -= math_1
+}
+:macro save_obstacle_metadata { 
+	i := obstacle_metadata
+	#math_1 := 1
+	#obstacles_end_index += math_1 
+	save obstacles_end_index - obstacles_chain_left
+}
+
+:alias obstacle_lookahead math_4
+
+: update_obstacles
+	# update the obstacles. 
+	
+	#Remember how many obstacles there currently are
+	# and some other stuff.
+	load_obstacle_metadata
+	
+	obstacles_current_index := 0
+	
+	SET_ADDR obstacle_data 
+	set_i_from_addr
+	load obstacle_type - obstacle_y
+	
+	# Obstacle lookahead is used to load 1 obstacle forward of
+	# the write destination so we can compact the array and erase
+	# the first element.
+	
+	if obstacle_x > 0 begin # no need to erase anything
+		obstacle_lookahead := 0 
+	else # set up to shift array left 1 element, overwriting the first
+		
+		# look ahead by 1 struct length
+		obstacle_lookahead := obstacle_STRUCT_SIZE 
+		
+		# reduce the number of elements we will iterate through
+		math_5 := 1 
+		obstacles_end_index -= math_5
+		
+	end
+	
+	# If there are no obstacles, don't bother drawing any
+	if obstacles_end_index == 0 then jump obstacle_spawn
+	
+	# Move obstacles leftward, skipping + overwriting the 1st if its x==0
+	loop 
+		
+		#1. Load an element from memory to active registers, optionally skipping forward by 1
+		set_i_from_addr
+		i += obstacle_lookahead # this applies the skip
+		load obstacle_type - obstacle_y
+
+		#2.  Move the loaded obstacle left
+		math_1 := 1
+		obstacle_x -= math_1
+		
+		i := obstacle_cactus_small
+
+		#2. Calculate any obstacle sprite table lookup we need to apply
+		math_5 := obstacle_type
+		math_6 := 1
+		math_5 -= math_6
+
+		#3. Multiply by 16 & apply the offset if it isn't zero
+		math_6 := 0
+		if math_5 > math_6 begin
+			math_5 <<= math_5
+			math_5 <<= math_5
+			math_5 <<= math_5
+			math_5 <<= math_5
+			i += math_5
+		end
+		
+		# Draw using the first 15 rows of data from the obstacle type entry
+		BLIT_SPRITE obstacle_x obstacle_y OBSTACLE_USABLE_LENGTH
+		# save the data for it
+
+    set_i_from_addr
+		save obstacle_type - obstacle_y
+
+		# advance the pointer
+		#:breakpoint check_offset_math
+		math_5 := obstacle_STRUCT_SIZE
+		addr_lo += math_5
+		addr_hi += vF
+
+		math_5 := 1
+		obstacles_current_index += math_5
+		
+	while obstacles_current_index < obstacles_end_index again
+	
+	
+	save_obstacle_metadata
+	
+	: obstacle_spawn
+	# spawn new ones if needed here
+	
+return
+
+
+###################################################################
+##### Physics for the Dinosaur                              #######
+###################################################################
 
 # A simple signed arithmetic. It's not the normal 2s complement kind,
 # it's meant to be very easy for beginners to read and follow, even
@@ -212,16 +437,6 @@ return
 	
 }
 
-:const SCREEN_WIDTH  128
-:const SCREEN_HEIGHT 64
-
-:macro BLIT_SPRITE r1 r2 length {
-	plane 1
-	sprite r1 r2 length
-	plane 2
-	sprite r1 r2 length
-}
-
 
 :const ANIM_DELAY_FACTOR  2  # how many game update ticks a given dino animation frame for.
 :alias anim_current_frame v0 # may still want to use this for relative jumps?
@@ -366,200 +581,6 @@ return
 return
 
 
-:const GROUND_OBSTACLE_HEIGHT  15
-:calc  CACTUS_DRAW_Y           { SCREEN_HEIGHT - GROUND_OBSTACLE_HEIGHT }
-# each of these fills the whole 15 bytes + a PAD byte to make address
-# selection easy when multiplying.
-: ground_obstacle_sprites
-	# setting for no obstacle at all
-	:const OBSTACLE_NONE	       0
-	
-	:const OBSTACLE_GROUND_SMALL 1
-	: obstacle_cactus_small # pad with a last byte to make multiplication easier
-		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-		0x18 0x18 0x5A 0x7E 0x18 0x18 0x18 0x00
-		
-	:const OBSTACLE_GROUND_LARGE 2
-	: obstacle_cactus_large
-	  0x18 0x18 0x18 0x18 0xDB 0xDB 0xFF 0xFF
-		0x18 0x18 0x18 0x18 0x18 0x18 0x18 0x00
-	
-	:const OBSTACLE_PTERODACTYL  3
-	: obstacle_pterodactyl
-		0x63 0x14 0x5C 0xFF 0x14 0x00 0x00 0x00
-		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-
-
-:const obstacles_MAX_LENGTH    4
-:alias obstacles_end_index     v3
-:alias obstacles_time_to_next  v4
-:alias obstacles_chain_left    v5 # how many left in the current chain
-
-:alias obstacles_current_index vE
-
-:alias obstacle_type				   v0
-:alias obstacle_x							 v1
-:alias obstacle_y 						 v2
-
-
-: obstacle_metadata
-	# how many obstacles there are currently
-	0x05
-	# how many ticks until next obstacle
-	0x00 
-	# obstacles_chain_left
-	0x00
-	
-:const obstacle_STRUCT_SIZE 4
-
-: obstacle_data 
-# Allocate storage for up to 10 obstacle positions.
-# Implementation quirks:
-# 	1. The last 0 byte speeds multiplication
-#			It increases the struct length to a power of 2 so simple
-#     bitshifting can be used to seek through the obstacle sprite
-#			table rather than complicated multiplication routines.
-#   2. This array will *always* be sorted
-#     This means that when delete an element, we can save the
-#     elements one left of their original position instead of
-#     worrying about implementing a ring buffer in Octo. There
-#			is also no cache in Chip-8 so no need to worry about any
-#     of that.
-
-# type,x  , y,   pad
-	0x01 0x28 0x31 0x00
-: obstacle_1
-	0x02 0x30 0x31 0x00
-: obstacle_2
-	0x02 0x38 0x31 0x00
-: obstacle_3
-	0x01 0x40 0x31 0x00
-: obstacle_4
-	0x03 0x48 0x10 0x00
-: obstacle_5
-	0x00 0x00 0x00 0x00
-: obstacle_6
-	0x00 0x00 0x00 0x00
-: obstacle_7
-	0x00 0x00 0x00 0x00
-: obstacle_8
-	0x00 0x00 0x00 0x00
-: obstacle_9
-	0x00 0x00 0x00 0x00
-
-:monitor obstacle_data " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_1    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_2 	 " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_3    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_4    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_5    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_6    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_7    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_8    " type: %1i x:%1i y:%1i pad: %1i"
-
-
-:macro load_obstacle_metadata {
-	i := obstacle_metadata
-	load obstacles_end_index - obstacles_chain_left
-	#math_1 := 1
-	#obstacles_end_index -= math_1
-}
-:macro save_obstacle_metadata { 
-	i := obstacle_metadata
-	#math_1 := 1
-	#obstacles_end_index += math_1 
-	save obstacles_end_index - obstacles_chain_left
-}
-
-:alias obstacle_lookahead math_4
-
-: update_obstacles
-	# update the obstacles. 
-	
-	#Remember how many obstacles there currently are
-	# and some other stuff.
-	load_obstacle_metadata
-	
-	obstacles_current_index := 0
-	
-	SET_ADDR obstacle_data 
-	set_i_from_addr
-	load obstacle_type - obstacle_y
-	
-	# Obstacle lookahead is used to load 1 obstacle forward of
-	# the write destination so we can compact the array and erase
-	# the first element.
-	
-	if obstacle_x > 0 begin # no need to erase anything
-		obstacle_lookahead := 0 
-	else # set up to shift array left 1 element, overwriting the first
-		
-		# look ahead by 1 struct length
-		obstacle_lookahead := obstacle_STRUCT_SIZE 
-		
-		# reduce the number of elements we will iterate through
-		math_5 := 1 
-		obstacles_end_index -= math_5
-		
-	end
-	
-	# If there are no obstacles, don't bother drawing any
-	if obstacles_end_index == 0 then jump obstacle_spawn
-	
-	# Move obstacles leftward, skipping + overwriting the 1st if its x==0
-	loop 
-		
-		#1. Load an element from memory to active registers, optionally skipping forward by 1
-		set_i_from_addr
-		i += obstacle_lookahead # this applies the skip
-		load obstacle_type - obstacle_y
-
-		#2.  Move the loaded obstacle left
-		math_1 := 1
-		obstacle_x -= math_1
-		
-		i := obstacle_cactus_small
-
-		#2. Calculate any obstacle sprite table lookup we need to apply
-		math_5 := obstacle_type
-		math_6 := 1
-		math_5 -= math_6
-
-		#3. Multiply by 16 & apply the offset if it isn't zero
-		math_6 := 0
-		if math_5 > math_6 begin
-			math_5 <<= math_5
-			math_5 <<= math_5
-			math_5 <<= math_5
-			math_5 <<= math_5
-			i += math_5
-		end
-
-		BLIT_SPRITE obstacle_x obstacle_y 15
-		# save the data for it
-
-    set_i_from_addr
-		save obstacle_type - obstacle_y
-
-		# advance the pointer
-		#:breakpoint check_offset_math
-		math_5 := obstacle_STRUCT_SIZE
-		addr_lo += math_5
-		addr_hi += vF
-
-		math_5 := 1
-		obstacles_current_index += math_5
-		
-	while obstacles_current_index < obstacles_end_index again
-	
-	
-	save_obstacle_metadata
-	
-	: obstacle_spawn
-	# spawn new ones if needed here
-	
-return
-
 
 : ground_decoration
 	0x88 0x22
@@ -575,6 +596,9 @@ return
 return
 
 :const BOOST_VELOCITY 2 
+
+:const DINO_JUMP_VEL_START -12
+:calc DINO_JUMP_VEL_DROP   { DINO_JUMP_VEL_START / 2 }
 
 
 : update_dino
