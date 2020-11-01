@@ -106,9 +106,9 @@ return
 
 : obstacle_metadata
 	# how many obstacles there are currently
-	0x05
+	0x04
 	# how many ticks until next obstacle
-	0x00 
+	0x32 
 	# obstacles_chain_left
 	0x00
 	
@@ -129,13 +129,13 @@ return
 #     of that.
 
 # type,x  , y,   pad
-	0x01 0x40 0x31 0x00
+	0x01 0 0x31 0x00
 : obstacle_1
-	0x01 0x48 0x31 0x00
+	0x01 64 0x31 0x00
 : obstacle_2
-	0x01 0x50 0x31 0x00
+	0x01 80 0x31 0x00
 : obstacle_3
-	0x01 0x70 0x31 0x00
+	0x01 128 0x31 0x00
 : obstacle_4
 	0x03 0x80 0x00 0x00
 : obstacle_5
@@ -217,10 +217,10 @@ return
 		
 		# look ahead by 1 struct length
 		obstacle_lookahead := obstacle_STRUCT_SIZE 
-		
+		load math_1 - math_3
+
 		# reduce the number of elements we will iterate through
-		math_5 := 1 
-		obstacles_end_index -= math_5
+		obstacles_end_index -= 1
 		
 	end
 	
@@ -239,8 +239,8 @@ return
 		obstacle_x -= 2
 		
 		# hacky overflow protection for badly placed items, prep it for deletion
-		math_1 := obstacle_MAX_VALID_X
-		if obstacle_x > math_1 then obstacle_x := 0
+		math_5 := obstacle_MAX_VALID_X
+		if obstacle_x > math_5 then obstacle_x := 0
 		
 		# only draw obstacles that are actually on screen
 		:calc DISPLAY_THRESHOLD { SCREEN_WIDTH - 8 }
@@ -251,8 +251,7 @@ return
 
 		#2. Calculate any obstacle sprite table lookup we need to apply
 		math_5 := obstacle_type
-		math_6 := 1
-		math_5 -= math_6
+		math_5 -= 1
 
 		#3. Multiply by 16 & apply the offset if it isn't zero
 		math_6 := 0
@@ -282,12 +281,21 @@ return
 		obstacles_current_index += math_5
 		
 	while obstacles_current_index < obstacles_end_index again
+	math_5 := 4
 	
+	if obstacles_end_index < math_5 begin
+		i := obstacle_3
+		math_1 := 1
+		math_2 := 120
+		math_3 := 49
+		save math_1 - math_3
+		obstacles_end_index += 1
+	end
 	
-	save_obstacle_metadata
+	#save_obstacle_metadata
 	
 	: obstacle_spawn
-	# spawn new ones if needed here
+
 	
 return
 
@@ -795,9 +803,7 @@ return
 	BLIT_SPRITE math_3 dino_draw_y 0
 	
 	# block on game over
+	: s
 	math_1 := key
-	
-	# return to main
-	jump main
-
+	jump s 
 	
