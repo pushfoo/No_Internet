@@ -2,7 +2,7 @@
 
 
 #############################################################
-##### General setuop & utilities                      #######
+##### General setup & utilities                       #######
 #############################################################
 
 # Memory manipulation toolkit
@@ -509,10 +509,6 @@ return
 	0x00
 : memvar_dino_vel_y
 	0x00
-: memvar_dino_draw_y
-	0x00
-#: memvar_dino_prev_draw_y
-#	0x00
 
 :macro save_dino_data {
 	i := struct_dino
@@ -614,26 +610,6 @@ return
 
 : end_animate_dino
 return
-
-
-
-: ground_decoration
-	0x88 0x22
-	
-: apply_gravity # make the dino's velocity go faster
-	value_b := 1
-	sign_b  := 0
-	
-	EXTRACT_VALUE_A dino_vel_y
-	EXTRACT_SIGN_A  dino_vel_y
-	ADD_S8_TEMPLATE dino_vel_y
-	
-return
-
-
-
-:calc dino_ground_pos { 1 }
-
 
 :const DINO_JUMP_VEL_START 20
 :const Y_SCALE_FACTOR 2
