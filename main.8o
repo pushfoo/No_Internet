@@ -212,6 +212,9 @@ return
 	
 }
 
+:const SCREEN_WIDTH  128
+:const SCREEN_HEIGHT 64
+
 :macro BLIT_SPRITE r1 r2 length {
 	plane 1
 	sprite r1 r2 length
@@ -233,7 +236,8 @@ return
 # filler constant to indicate a byte is for padding
 :const PAD 0
 
-:const dino_HEIGHT 4
+:const dino_HEIGHT   16
+:calc  dino_GROUND_Y { SCREEN_HEIGHT - dino_HEIGHT } 
 
 :const dino_X_POS  16
 
@@ -246,8 +250,8 @@ return
 :const DINO_STATE_STILL     0
 :const DINO_STATE_RUNNING   1
 :const DINO_STATE_DUCKING   2
-:const DINO_STATE_ASCENDING 3
-:const DINO_STATE_CRY       4
+:const DINO_STATE_JUMPING	  3
+:const DINO_STATE_CRYING    4
 
 : memvar_dino_state
 	0x00
@@ -346,11 +350,11 @@ return
 
 : blit_current_dino_frame
 	
-	math_1 := DINO_STATE_RUNNING
+	math_1 := DINO_STATE_DUCKING
 	if dino_state == math_1 begin
-		i := dino_stand
-	else
 		i := dino_duck
+	else
+		i := dino_stand
 	end
 	SET_I_TO_FRAME anim_current_frame
 	math_1 := dino_X_POS
@@ -377,17 +381,12 @@ return
 
 	blit_current_dino_frame
 
-return
-
-
-	
-	
 : end_animate_dino
 return
 
 
 :const GROUND_OBSTACLE_HEIGHT  15
-:calc  CACTUS_DRAW_Y           { 64 - GROUND_OBSTACLE_HEIGHT }
+:calc  CACTUS_DRAW_Y           { SCREEN_HEIGHT - GROUND_OBSTACLE_HEIGHT }
 # each of these fills the whole 15 bytes + a PAD byte to make address
 # selection easy when multiplying.
 : ground_obstacle_sprites
@@ -584,7 +583,7 @@ return
 : ground_decoration
 	0x88 0x22
 	
-: apply_gravity
+: apply_gravity # make the dino's velocity go faster
 	value_b := 1
 	sign_b  := 0
 	
@@ -599,8 +598,55 @@ return
 
 : update_dino
 	load_dino_data
-	dino_pos_y -= 0
-	dino_draw_y := 48
+	#dino_pos_y -= dino_vel_y 
+	
+	math_1 := OCTO_KEY_W
+	math_2 := OCTO_KEY_S
+	
+	
+	#dino_draw_y := dino_GROUND_Y
+	
+	#:breakpoint dino_states
+	#jump end_dino_update
+	math_3 := DINO_STATE_RUNNING
+	if dino_state == math_3 begin
+		if math_1 key begin
+			dino_state := DINO_STATE_JUMPING
+			jump end_dino_update
+		end
+		
+		if math_2 key begin
+			dino_state := DINO_STATE_DUCKING
+			jump end_dino_update
+		end
+	end
+	
+	math_3 := DINO_STATE_DUCKING	
+	if dino_state == math_3 begin
+		if math_2 -key begin # cancel out of duck if duck key no longer pressed
+			if math_1 -key begin
+				dino_state := DINO_STATE_RUNNING
+			else
+				dino_state := DINO_STATE_JUMPING
+			end
+		end
+		jump end_dino_update
+	end
+	
+	# last of elif equivalent chain, stop jumping if jump key not pressed anymore
+	math_3 := DINO_STATE_JUMPING
+	if dino_state == math_3 begin
+		if math_1 -key then dino_state := DINO_STATE_RUNNING
+	end
+	: end_dino_update
+	
+	# draw on the ground if not jumping
+	math_3 := DINO_STATE_JUMPING
+	if dino_state == math_3 begin
+		dino_draw_y := 24
+	else
+		dino_draw_y := dino_GROUND_Y
+	end
 	
 	animate_dino
 	
@@ -626,9 +672,9 @@ return
 	
 	# set initial variables
 	dino_pos_y := 0
-	dino_draw_y := 48
+	dino_draw_y := dino_GROUND_Y
 	LD_INT8 dino_vel_y 8
-	dino_state := DINO_STATE_DUCKING
+	dino_state := DINO_STATE_RUNNING
 	
 	# persist them to memory
 	save_dino_data
