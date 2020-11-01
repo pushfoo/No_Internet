@@ -86,8 +86,9 @@ return
 	
 	:const OBSTACLE_PTERODACTYL  3
 	: obstacle_pterodactyl
-		0x63 0x14 0x5C 0xFF 0x14 0x00 0x00 0x00
 		0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+		0x63 0x14 0x5C 0xFF 0x14 0x00 0x00 0x00
+	
 
 # metadata for the obstacle array?
 :const obstacles_MAX_LENGTH    10
@@ -136,7 +137,7 @@ return
 : obstacle_3
 	0x01 0x70 0x31 0x00
 : obstacle_4
-	0x03 0x80 0x31 0x00
+	0x03 0x80 0x00 0x00
 : obstacle_5
 	0x00 0x00 0x00 0x00
 : obstacle_6
@@ -179,6 +180,19 @@ return
 # not the with of the screen so we can set up chains off screen
 :const obstacle_MAX_VALID_X 128    
 
+# extended obstacle types for generating 
+
+:const OSPAWN_SKIP               0
+:const OSPAWN_SINGLE_SMALL       1
+:const OSPAWN_SINGLE_LARGE       2
+:const OSPAWN_PTERO_DUCK         3
+:const OSPAWN_PTERO_GROUND       4
+:const OSPAWN_PTERO_HIGH         5
+:const OSPAWN_PTERO_CIEL         6
+
+
+: obstacle_gen_table
+	# type code , 
 
 : update_obstacles
 	# update the obstacles. 
