@@ -2,7 +2,7 @@
 
 
 #############################################################
-##### General setuop & utilities                      #######
+##### General setup & utilities                       #######
 #############################################################
 
 # Memory manipulation toolkit
@@ -118,16 +118,17 @@ return
 # Implementation quirks:
 # 	1. The last 0 byte speeds multiplication
 #			It increases the struct length to a power of 2 so simple
-#     bitshifting can be used to seek through the obstacle sprite
+#           bitshifting can be used to seek through the obstacle sprite
 #			table rather than complicated multiplication routines.
+#
 #   2. This array will *always* be sorted
-#     This means that when delete an element, we can save the
-#     elements one left of their original position instead of
-#     worrying about implementing a ring buffer in Octo. There
-#			is also no cache in Chip-8 so no need to worry about any
-#     of that.
+#           This means that when delete an element, we can save the
+#           elements one left of their original position instead of
+#           worrying about implementing a ring buffer in Octo. There
+#	        is also no cache in Chip-8 so no need to worry about any
+#           of that.
 
-# type,x  , y,   pad
+#   type x    y    pad
 	0x01 0x28 0x31 0x00
 : obstacle_1
 	0x02 0x40 0x31 0x00
@@ -150,7 +151,7 @@ return
 
 :monitor obstacle_data " type: %1i x:%1i y:%1i pad: %1i"
 :monitor obstacle_1    " type: %1i x:%1i y:%1i pad: %1i"
-:monitor obstacle_2 	 " type: %1i x:%1i y:%1i pad: %1i"
+:monitor obstacle_2    " type: %1i x:%1i y:%1i pad: %1i"
 :monitor obstacle_3    " type: %1i x:%1i y:%1i pad: %1i"
 :monitor obstacle_4    " type: %1i x:%1i y:%1i pad: %1i"
 :monitor obstacle_5    " type: %1i x:%1i y:%1i pad: %1i"
@@ -473,7 +474,7 @@ return
 :const DINO_STATE_STILL     0
 :const DINO_STATE_RUNNING   1
 :const DINO_STATE_DUCKING   2
-:const DINO_STATE_JUMPING	  3
+:const DINO_STATE_JUMPING	3
 :const DINO_STATE_FALLING   4
 :const DINO_STATE_CRYING    5
 
